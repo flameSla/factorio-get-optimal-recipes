@@ -160,61 +160,104 @@ def print_flows(flows):
 
 
 # ====================================
-def get_flow(id, amount):
+def get_all_ingredients(*, items: dict(), final_ingredients=()):
+    # получить цепочку производст с уникальными рецептами
+    # (невозможны множественные варианты)
+    def get_flow(id, amount):
+        k = Fraction(1)
+        res = dict_bp()
+        recipe = json_all["recipes"][id]
+
+        k_products = Fraction(recipe["products"][0]["amount"])
+        for p in recipe["products"]:
+            if p["amount"] > k_products:
+                k_products = Fraction(p["amount"])
+        if amount < 0:
+            res[recipe["products"][0]["name"]] = amount
+            amount *= -1
+        for i in recipe["ingredients"]:
+            res[i["name"]] = amount / k / k_products
+
+        return res
+
+    def is_balance(flows, completely_balanced: bool, final_ingredients):
+        temp = dict_bp()
+        for f in flows:
+            temp += f
+        if completely_balanced:
+            res = [
+                {i: temp[i]}
+                for i in temp.keys()
+                if temp[i] != 0 and i not in final_ingredients
+            ]
+        else:
+            global recipes_name_to_id
+            res = [
+                {i: temp[i]}
+                for i in temp.keys()
+                if temp[i] != 0
+                and i not in final_ingredients
+                and len(recipes_name_to_id[i]) == 1
+            ]
+        return len(res) == 0, res
+
+    def recursion_get_all_ingredients(flows):
+        res = dict_bp()
+
+        debug()
+        debug("==================")
+        debug("recurcive")
+        debug("flows = ", type(flows), flows)
+
+        balanced, unbalanced_flows = is_balance(flows, False, final_ingredients)
+        debug("balanced = ", type(balanced), balanced)
+        debug("unbalanced_flows = ", type(unbalanced_flows), unbalanced_flows)
+        if balanced:
+            return is_balance(flows, True, final_ingredients), flows
+        else:
+            for f in unbalanced_flows:
+                assert len(f) == 1
+                for name, amount in f.items():
+                    # есть дубликаты?
+                    names = []
+                    for f in flows:
+                        names.extend([k for k, v in f.items() if v < 0])
+                    if name in names:
+                        debug()
+                        debug("==================")
+                        debug(" удалить дубликаты ")
+                        debug("name = ", type(name), name)
+                        debug("names = ", type(names), names)
+                        debug_flows(flows)
+                        run = True
+                        while run:
+                            run = False
+                            for i, f in enumerate(flows):
+                                if name in f and f[name] < 0:
+                                    # нашли дубликат
+                                    amount -= f[name]
+                                    del flows[i]
+                                    run = True
+                                    break
+
+                        debug_flows(flows)
+
+                    ids = recipes_name_to_id[name]
+                    assert len(ids) == 1
+                    flow = get_flow(ids[0], -amount)
+                    debug("flow = ", type(flow), flow)
+                    flows.append(flow)
+                    debug("flows = ", type(flows), flows)
+
+            res = recursion_get_all_ingredients(flows)
+            return res
+
     global json_all
     global recipes_name_to_id
-
-    k = Fraction(1)
-
-    res = dict_bp()
-    recipe = json_all["recipes"][id]
-
-    k_products = Fraction(recipe["products"][0]["amount"])
-    for p in recipe["products"]:
-        if p["amount"] > k_products:
-            k_products = Fraction(p["amount"])
-    if amount < 0:
-        res[recipe["products"][0]["name"]] = amount
-        amount *= -1
-    for i in recipe["ingredients"]:
-        res[i["name"]] = amount / k / k_products
-
-    return res
-
-
-def is_balance(flows, completely_balanced: bool, final_ingredients):
-    # print()
-    # print('\tfinal_ingredients = ', type(final_ingredients), final_ingredients)
-    # print()
-    temp = dict_bp()
-    for f in flows:
-        temp += f
-    if completely_balanced:
-        res = [
-            {i: temp[i]}
-            for i in temp.keys()
-            if temp[i] != 0 and i not in final_ingredients
-        ]
-    else:
-        global recipes_name_to_id
-        res = [
-            {i: temp[i]}
-            for i in temp.keys()
-            if temp[i] != 0
-            and i not in final_ingredients
-            and len(recipes_name_to_id[i]) == 1
-        ]
-    return len(res) == 0, res
-
-
-def get_all_ingredients(*, items: dict(), final_ingredients=()):
     global par_debugging
     par_debugging = False
 
-    global json_all
-    global recipes_name_to_id
     res = dict_bp()
-
     k = Fraction(1)
     # if item_name in productivity:
     #     k = productivity[item_name]
@@ -243,67 +286,13 @@ def get_all_ingredients(*, items: dict(), final_ingredients=()):
 
     debug("")
     debug("flows = ", type(flows), flows)
-    res = recursion_get_all_ingredients(flows, final_ingredients)
+    res = recursion_get_all_ingredients(flows)
     debug()
     debug("==================")
     debug("get_all_ingredients")
     debug("res = ", type(res), res)
 
     return {item_name: amount}, res
-
-
-def recursion_get_all_ingredients(flows, final_ingredients):
-    res = dict_bp()
-    global par_debugging
-    par_debugging = False
-
-    debug()
-    debug("==================")
-    debug("recurcive")
-    debug("flows = ", type(flows), flows)
-
-    balanced, unbalanced_flows = is_balance(flows, False, final_ingredients)
-    debug("balanced = ", type(balanced), balanced)
-    debug("unbalanced_flows = ", type(unbalanced_flows), unbalanced_flows)
-    if balanced:
-        return is_balance(flows, True, final_ingredients), flows
-    else:
-        for f in unbalanced_flows:
-            assert len(f) == 1
-            for name, amount in f.items():
-                # есть дубликаты?
-                names = []
-                for f in flows:
-                    names.extend([k for k, v in f.items() if v < 0])
-                if name in names:
-                    debug()
-                    debug("==================")
-                    debug(" удалить дубликаты ")
-                    debug("name = ", type(name), name)
-                    debug("names = ", type(names), names)
-                    debug_flows(flows)
-                    run = True
-                    while run:
-                        run = False
-                        for i, f in enumerate(flows):
-                            if name in f and f[name] < 0:
-                                # нашли дубликат
-                                amount -= f[name]
-                                del flows[i]
-                                run = True
-                                break
-
-                    debug_flows(flows)
-
-                ids = recipes_name_to_id[name]
-                assert len(ids) == 1
-                flow = get_flow(ids[0], -amount)
-                debug("flow = ", type(flow), flow)
-                flows.append(flow)
-                debug("flows = ", type(flows), flows)
-
-        res = recursion_get_all_ingredients(flows, final_ingredients)
-        return res
 
 
 ######################################
@@ -347,7 +336,8 @@ if __name__ == "__main__":
     name, (is_balance, flows) = get_all_ingredients(
         items={
             "automation-science-pack": 1,
-            # "logistic-science-pack": 1,
+            "logistic-science-pack": 1,
+            "military-science-pack": 1,
         },
         final_ingredients=["coal"],
     )
